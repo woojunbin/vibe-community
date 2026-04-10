@@ -43,6 +43,8 @@ export interface Connection {
   label: string | null;
   edge_type: 'solid' | 'dashed';
   source_component_id: string | null;
+  source_block_id: string | null;
+  target_block_id: string | null;
   created_at: string;
   source_screen?: PublishedScreen;
   target_screen?: PublishedScreen;

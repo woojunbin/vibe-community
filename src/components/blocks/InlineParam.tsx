@@ -7,9 +7,10 @@ interface InlineParamProps {
   value: unknown;
   onChange: (value: unknown) => void;
   componentNames: string[];
+  screenNames?: string[];
 }
 
-export function InlineParam({ paramDef, value, onChange, componentNames }: InlineParamProps) {
+export function InlineParam({ paramDef, value, onChange, componentNames, screenNames = [] }: InlineParamProps) {
   switch (paramDef.type) {
     case 'number':
       return (
@@ -88,13 +89,16 @@ export function InlineParam({ paramDef, value, onChange, componentNames }: Inlin
 
     case 'screen_ref':
       return (
-        <input
-          type="text"
+        <select
           value={String(value)}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="화면 이름"
-          className="w-20 px-1.5 py-0.5 text-xs border border-gray-200 rounded text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
+          className="px-1.5 py-0.5 text-xs border border-gray-200 rounded text-purple-700 bg-purple-50 focus:outline-none focus:ring-1 focus:ring-purple-500"
+        >
+          <option value="">화면 선택</option>
+          {screenNames.map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
       );
 
     default:

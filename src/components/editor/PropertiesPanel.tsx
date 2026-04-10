@@ -9,7 +9,7 @@ import type { ActionBlock } from '@/types/action-block';
 
 type Tab = 'props' | 'blocks' | 'style';
 
-export function PropertiesPanel() {
+export function PropertiesPanel({ screenNames = [] }: { screenNames?: string[] }) {
   const [tab, setTab] = useState<Tab>('props');
   const screen = useEditorStore((s) => s.screen);
   const selectedId = useEditorStore((s) => s.selectedComponentId);
@@ -32,18 +32,10 @@ export function PropertiesPanel() {
     updateComponent(component!.id, { style: { ...component!.style, [key]: value } });
   }
 
-  // ActionBlocks는 behavior 필드에 JSON으로 저장 (기존 호환)
-  const actionBlocks: ActionBlock[] = (() => {
-    try {
-      if (component.behavior && component.behavior.startsWith('[')) {
-        return JSON.parse(component.behavior);
-      }
-    } catch { /* ignore */ }
-    return [];
-  })();
+  const blocks = component.blocks ?? [];
 
-  function handleBlocksChange(blocks: ActionBlock[]) {
-    updateComponent(component!.id, { behavior: JSON.stringify(blocks) });
+  function handleBlocksChange(newBlocks: ActionBlock[]) {
+    updateComponent(component!.id, { blocks: newBlocks });
   }
 
   const tabs: { key: Tab; label: string }[] = [
@@ -104,10 +96,12 @@ export function PropertiesPanel() {
 
         {tab === 'blocks' && (
           <ActionBlockPanel
-            blocks={actionBlocks}
+            blocks={blocks}
             onChange={handleBlocksChange}
             componentNames={componentNames}
             selectedComponentName={component.name}
+            selectedComponentId={component.id}
+            screenNames={screenNames}
           />
         )}
 

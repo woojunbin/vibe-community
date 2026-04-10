@@ -12,12 +12,15 @@ interface ActionBlockPanelProps {
   onChange: (blocks: ActionBlock[]) => void;
   componentNames: string[];
   selectedComponentName: string;
+  selectedComponentId: string;
+  screenNames?: string[];
 }
 
-export function ActionBlockPanel({ blocks, onChange, componentNames, selectedComponentName }: ActionBlockPanelProps) {
+export function ActionBlockPanel({ blocks, onChange, componentNames, selectedComponentName, selectedComponentId, screenNames = [] }: ActionBlockPanelProps) {
   const [inputValue, setInputValue] = useState('');
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteFilter, setAutocompleteFilter] = useState('');
+  const [newTriggerType, setNewTriggerType] = useState<string>('onPress');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const triggerGroups = useMemo(() => {
@@ -57,7 +60,10 @@ export function ActionBlockPanel({ blocks, onChange, componentNames, selectedCom
 
     const newBlock: ActionBlock = {
       id: uuid(),
-      trigger: { type: 'onPress', source: selectedComponentName || '_self' },
+      componentId: selectedComponentId,
+      trigger: newTriggerType === 'onLoad'
+        ? { type: 'onLoad' as const }
+        : { type: newTriggerType as 'onPress', source: selectedComponentName || '_self' },
       target,
       action: actionType as ActionBlock['action'],
       params,
@@ -125,6 +131,21 @@ export function ActionBlockPanel({ blocks, onChange, componentNames, selectedCom
       {blocks.length === 0 && (
         <p className="text-xs text-gray-500 text-center py-3">동작 블록이 없습니다</p>
       )}
+
+      <div className="flex items-center gap-1.5 mt-2">
+        <select
+          value={newTriggerType}
+          onChange={(e) => setNewTriggerType(e.target.value)}
+          className="px-1.5 py-2 text-xs border border-gray-200 rounded-lg text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="onPress">누르면</option>
+          <option value="onLoad">화면 진입 시</option>
+          <option value="onChange">변경되면</option>
+          <option value="onSubmit">제출하면</option>
+          <option value="onFocus">포커스되면</option>
+          <option value="onBlur">포커스 해제</option>
+        </select>
+      </div>
 
       <div className="relative mt-1">
         <input

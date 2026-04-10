@@ -1,14 +1,23 @@
-// ActionBlock 시스템 핵심 타입
+// 블록 시스템 핵심 타입
+// 블록 = 페이지 내 행위. 컴포넌트에 붙는 액션 단위.
+// 페이지 간 네비게이션 = 블록(페이지A) → 블록(페이지B) 연결.
 
-export interface ActionBlock {
+export interface Block {
   id: string;
+  componentId: string;       // 소속 컴포넌트 ID
   trigger: Trigger;
-  target: string;        // @컴포넌트명 또는 "_self"
+  target: string;            // @컴포넌트명 또는 "_self"
   action: ActionType;
   params: Record<string, unknown>;
   order: number;
   enabled: boolean;
+  // 블록-블록 연결 (네비게이션 등 페이지 간 연결 시)
+  connectedScreenId?: string;
+  connectedBlockId?: string;
 }
+
+// 하위 호환용 별칭
+export type ActionBlock = Block;
 
 export type Trigger =
   | { type: 'onPress'; source: string }
@@ -44,6 +53,11 @@ export type ActionType =
   | 'bounce' | 'shake' | 'pulse' | 'slide' | 'spin' | 'typewriter'
   // Timer
   | 'delay' | 'interval' | 'countdown' | 'debounce';
+
+// 네비게이션 관련 액션 (블록-블록 연결 대상)
+export const NAVIGATION_ACTIONS: ActionType[] = ['navigate', 'openModal', 'openLink'];
+// 진입점 트리거 (다른 페이지에서 연결받을 수 있는 블록)
+export const ENTRY_TRIGGERS: TriggerType[] = ['onLoad'];
 
 export type ParamType =
   | 'number' | 'color' | 'string' | 'select'

@@ -11,9 +11,10 @@ import type { PaletteItem } from '@/components/palette/palette-data';
 
 interface PageEditorProps {
   screenId: string;
+  screenNames?: string[];
 }
 
-export function PageEditor({ screenId: _screenId }: PageEditorProps) {
+export function PageEditor({ screenId: _screenId, screenNames = [] }: PageEditorProps) {
   const screen = useEditorStore((s) => s.screen);
   const selectComponent = useEditorStore((s) => s.selectComponent);
   const selectedId = useEditorStore((s) => s.selectedComponentId);
@@ -83,7 +84,7 @@ export function PageEditor({ screenId: _screenId }: PageEditorProps) {
         </DndContext>
       </div>
 
-      {selectedId && <PropertiesPanel />}
+      {selectedId && <PropertiesPanel screenNames={screenNames} />}
     </div>
   );
 }

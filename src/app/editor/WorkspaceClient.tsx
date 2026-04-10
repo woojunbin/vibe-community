@@ -16,19 +16,59 @@ import {
   MarkerType,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Plus, Users, Search, X, Import } from 'lucide-react';
+import { Plus, Users, Search, X, Import, FileCode } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { ScreenNode } from '@/components/flow/ScreenNode';
+import { ScreenNode, type BlockHandle } from '@/components/flow/ScreenNode';
 import { Button } from '@/components/ui/Button';
 import type { PublishedScreen, Connection } from '@/types/community';
+import type { Block } from '@/types/action-block';
+import { NAVIGATION_ACTIONS, ENTRY_TRIGGERS } from '@/types/action-block';
+import { CodeExportPanel } from '@/components/codegen/CodeExportPanel';
 
 const nodeTypes = { screenNode: ScreenNode };
+
+/** 화면의 컴포넌트에서 블록 핸들 추출 */
+function extractBlockHandles(screen: PublishedScreen): BlockHandle[] {
+  const handles: BlockHandle[] = [];
+  const components = screen.components ?? [];
+  for (const comp of components) {
+    // blocks 배열 또는 behavior 문자열 파싱
+    let blocks: Block[] = [];
+    const raw = comp as unknown as { blocks?: Block[]; behavior?: string };
+    if (Array.isArray(raw.blocks)) {
+      blocks = raw.blocks;
+    } else if (typeof raw.behavior === 'string' && raw.behavior.startsWith('[')) {
+      try { blocks = JSON.parse(raw.behavior); } catch { /* ignore */ }
+    }
+    for (const block of blocks) {
+      if (NAVIGATION_ACTIONS.includes(block.action)) {
+        handles.push({
+          id: `block__${block.id}`,
+          label: `${comp.name}.${block.action}`,
+          type: 'source',
+          componentName: comp.name,
+          action: block.action,
+        });
+      }
+      if (ENTRY_TRIGGERS.includes(block.trigger.type)) {
+        handles.push({
+          id: `block__${block.id}`,
+          label: `${comp.name}.${block.trigger.type}`,
+          type: 'target',
+          componentName: comp.name,
+        });
+      }
+    }
+  }
+  return handles;
+}
 
 export function WorkspaceClient() {
   const router = useRouter();
   const [userId, setUserId] = useState('');
   const [creating, setCreating] = useState(false);
   const [showCommunity, setShowCommunity] = useState(false);
+  const [showCodeExport, setShowCodeExport] = useState(false);
   const supabaseRef = useRef(createClient());
 
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
@@ -59,8 +99,9 @@ export function WorkspaceClient() {
           isOwn: true,
           ownerName: null,
           isPublished: s.is_published,
+          blockHandles: extractBlockHandles(s),
         },
-        position: { x: (i % 3) * 250 + 80, y: Math.floor(i / 3) * 260 + 80 },
+        position: { x: (i % 3) * 250 + 80, y: Math.floor(i / 3) * 280 + 80 },
       }));
       setNodes(newNodes);
 
@@ -72,19 +113,28 @@ export function WorkspaceClient() {
           .or(ids.map(id => `source_screen_id.eq.${id}`).join(','));
 
         if (conns) {
-          const newEdges: Edge[] = conns.map((c: Connection) => ({
-            id: c.id,
-            source: c.source_screen_id,
-            target: c.target_screen_id,
-            label: c.label || undefined,
-            animated: false,
-            style: {
-              stroke: '#1e2d45',
-              strokeWidth: 2,
-              strokeDasharray: c.edge_type === 'dashed' ? '8 4' : undefined,
-            },
-            markerEnd: { type: MarkerType.ArrowClosed, color: '#1e2d45', width: 16, height: 16 },
-          }));
+          const newEdges: Edge[] = conns.map((c: Connection) => {
+            const isBlock = !!c.source_block_id;
+            return {
+              id: c.id,
+              source: c.source_screen_id,
+              target: c.target_screen_id,
+              sourceHandle: c.source_block_id ? `block__${c.source_block_id}` : undefined,
+              targetHandle: c.target_block_id ? `block__${c.target_block_id}` : undefined,
+              label: c.label || undefined,
+              animated: isBlock,
+              style: {
+                stroke: isBlock ? '#f97316' : '#1e2d45',
+                strokeWidth: 2,
+                strokeDasharray: c.edge_type === 'dashed' ? '8 4' : undefined,
+              },
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: isBlock ? '#f97316' : '#1e2d45',
+                width: 16, height: 16,
+              },
+            };
+          });
           setEdges(newEdges);
         }
       }
@@ -92,12 +142,20 @@ export function WorkspaceClient() {
     load();
   }, [setNodes, setEdges]);
 
-  // 노드 연결
+  // 노드 연결 (블록-블록 레벨)
   const onConnect = useCallback(async (connection: FlowConnection) => {
     if (!connection.source || !connection.target) return;
     const supabase = supabaseRef.current;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    // 핸들 ID에서 블록 ID 추출 (format: "block__{blockId}")
+    const sourceBlockId = connection.sourceHandle?.startsWith('block__')
+      ? connection.sourceHandle.replace('block__', '')
+      : null;
+    const targetBlockId = connection.targetHandle?.startsWith('block__')
+      ? connection.targetHandle.replace('block__', '')
+      : null;
 
     const { data, error } = await supabase
       .from('connections')
@@ -106,18 +164,28 @@ export function WorkspaceClient() {
         target_screen_id: connection.target,
         created_by: user.id,
         edge_type: 'solid',
+        source_block_id: sourceBlockId,
+        target_block_id: targetBlockId,
       })
       .select()
       .single();
 
     if (error) { console.error(error); return; }
 
+    const isBlockConnection = !!sourceBlockId;
     setEdges((eds) => addEdge({
       ...connection,
       id: data.id,
-      animated: false,
-      style: { stroke: '#1e2d45', strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#1e2d45', width: 16, height: 16 },
+      animated: isBlockConnection,
+      style: {
+        stroke: isBlockConnection ? '#f97316' : '#1e2d45',
+        strokeWidth: 2,
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: isBlockConnection ? '#f97316' : '#1e2d45',
+        width: 16, height: 16,
+      },
     }, eds));
   }, [setEdges]);
 
@@ -227,6 +295,9 @@ export function WorkspaceClient() {
           노드 클릭으로 편집 · 핸들 드래그로 연결
         </span>
         <div className="flex-1" />
+        <Button variant="secondary" size="sm" onClick={() => setShowCodeExport(true)}>
+          <FileCode size={14} className="mr-1" /> 코드 내보내기
+        </Button>
         <Button variant="secondary" size="sm" onClick={() => setShowCommunity(true)}>
           <Import size={14} className="mr-1" /> 페이지 가져오기
         </Button>
@@ -259,6 +330,11 @@ export function WorkspaceClient() {
           <Background gap={20} size={1} color="#e5e7eb" />
           <Controls showInteractive={false} style={{ bottom: 16, left: 16 }} />
         </ReactFlow>
+
+        {/* 코드 내보내기 모달 */}
+        {showCodeExport && (
+          <CodeExportPanel onClose={() => setShowCodeExport(false)} />
+        )}
 
         {/* 커뮤니티 페이지 가져오기 패널 */}
         {showCommunity && (

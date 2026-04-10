@@ -1,5 +1,4 @@
-// 기존 VibeBuilder에서 이식한 핵심 타입
-// 나중에 데스크톱 앱과 합칠 때 공유 타입으로 사용
+import type { Block } from './action-block';
 
 export interface Position { x: number; y: number }
 export interface Size { width: number; height: number }
@@ -30,7 +29,9 @@ export interface AppComponent {
   size: Size;
   style: Record<string, unknown>;
   props: ComponentProps;
-  behavior: string;
+  blocks: Block[];
+  /** @deprecated — behavior 문자열은 blocks 배열로 대체됨. 마이그레이션 호환용. */
+  behavior?: string;
 }
 
 export interface Screen {
