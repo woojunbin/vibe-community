@@ -21,18 +21,22 @@ import { createClient } from '@/lib/supabase/client';
 import { ScreenNode, type BlockHandle } from '@/components/flow/ScreenNode';
 import { Button } from '@/components/ui/Button';
 import type { PublishedScreen, Connection } from '@/types/community';
-import type { Block } from '@/types/action-block';
-import { NAVIGATION_ACTIONS, ENTRY_TRIGGERS } from '@/types/action-block';
+import type { Block, TriggerType } from '@/types/action-block';
+import { NAVIGATION_ACTIONS } from '@/types/action-block';
+import { getBlockColor } from '@/components/flow/ScreenNode';
 import { CodeExportPanel } from '@/components/codegen/CodeExportPanel';
+import { TRIGGER_LABELS } from '@/types/action-block';
 
 const nodeTypes = { screenNode: ScreenNode };
 
-/** 화면의 컴포넌트에서 블록 핸들 추출 */
+// 트리거 = 왼쪽(입력), 액션 = 오른쪽(출력)
+const INPUT_TRIGGERS: TriggerType[] = ['onLoad', 'onPress', 'onChange', 'onSubmit', 'onFocus', 'onBlur'];
+
+/** 화면의 컴포넌트에서 모든 블록을 핸들로 추출 */
 function extractBlockHandles(screen: PublishedScreen): BlockHandle[] {
   const handles: BlockHandle[] = [];
   const components = screen.components ?? [];
   for (const comp of components) {
-    // blocks 배열 또는 behavior 문자열 파싱
     let blocks: Block[] = [];
     const raw = comp as unknown as { blocks?: Block[]; behavior?: string };
     if (Array.isArray(raw.blocks)) {
@@ -41,21 +45,31 @@ function extractBlockHandles(screen: PublishedScreen): BlockHandle[] {
       try { blocks = JSON.parse(raw.behavior); } catch { /* ignore */ }
     }
     for (const block of blocks) {
-      if (NAVIGATION_ACTIONS.includes(block.action)) {
+      if (!block.enabled) continue;
+      const triggerLabel = TRIGGER_LABELS[block.trigger.type] || block.trigger.type;
+      const color = getBlockColor(block.action);
+
+      // 모든 블록은 왼쪽(트리거 입력)으로 연결받을 수 있음
+      if (INPUT_TRIGGERS.includes(block.trigger.type)) {
         handles.push({
-          id: `block__${block.id}`,
-          label: `${comp.name}.${block.action}`,
-          type: 'source',
+          id: `in__${block.id}`,
+          label: `${comp.name} · ${triggerLabel}`,
+          side: 'left',
+          color,
           componentName: comp.name,
-          action: block.action,
+          triggerType: block.trigger.type,
         });
       }
-      if (ENTRY_TRIGGERS.includes(block.trigger.type)) {
+
+      // 네비게이션/출력 블록은 오른쪽으로 연결 나감
+      if (NAVIGATION_ACTIONS.includes(block.action)) {
         handles.push({
-          id: `block__${block.id}`,
-          label: `${comp.name}.${block.trigger.type}`,
-          type: 'target',
+          id: `out__${block.id}`,
+          label: `${comp.name} · ${block.action}`,
+          side: 'right',
+          color,
           componentName: comp.name,
+          actionType: block.action,
         });
       }
     }
@@ -119,8 +133,8 @@ export function WorkspaceClient() {
               id: c.id,
               source: c.source_screen_id,
               target: c.target_screen_id,
-              sourceHandle: c.source_block_id ? `block__${c.source_block_id}` : undefined,
-              targetHandle: c.target_block_id ? `block__${c.target_block_id}` : undefined,
+              sourceHandle: c.source_block_id ? `out__${c.source_block_id}` : undefined,
+              targetHandle: c.target_block_id ? `in__${c.target_block_id}` : undefined,
               label: c.label || undefined,
               animated: isBlock,
               style: {
@@ -149,12 +163,12 @@ export function WorkspaceClient() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 핸들 ID에서 블록 ID 추출 (format: "block__{blockId}")
-    const sourceBlockId = connection.sourceHandle?.startsWith('block__')
-      ? connection.sourceHandle.replace('block__', '')
+    // 핸들 ID에서 블록 ID 추출 (format: "out__{blockId}" / "in__{blockId}")
+    const sourceBlockId = connection.sourceHandle?.startsWith('out__')
+      ? connection.sourceHandle.replace('out__', '')
       : null;
-    const targetBlockId = connection.targetHandle?.startsWith('block__')
-      ? connection.targetHandle.replace('block__', '')
+    const targetBlockId = connection.targetHandle?.startsWith('in__')
+      ? connection.targetHandle.replace('in__', '')
       : null;
 
     const { data, error } = await supabase
@@ -193,6 +207,25 @@ export function WorkspaceClient() {
   const onNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     router.push(`/editor/${node.id}`);
   }, [router]);
+
+  // 노드 더블클릭 → 이름 변경
+  const onNodeDoubleClick: NodeMouseHandler = useCallback(async (_event, node) => {
+    _event.stopPropagation();
+    const currentName = (node.data as { label?: string }).label || '';
+    const newName = window.prompt('페이지 이름 변경', currentName);
+    if (!newName || newName === currentName) return;
+
+    const supabase = supabaseRef.current;
+    const { error } = await supabase
+      .from('screens')
+      .update({ name: newName, updated_at: new Date().toISOString() })
+      .eq('id', node.id);
+    if (error) return;
+
+    setNodes(nds => nds.map(n =>
+      n.id === node.id ? { ...n, data: { ...n.data, label: newName } } : n
+    ));
+  }, [setNodes]);
 
   // 새 화면 추가
   const handleAddScreen = useCallback(async () => {
@@ -292,7 +325,7 @@ export function WorkspaceClient() {
       <header className="h-12 bg-white border-b border-gray-200 flex items-center px-4 gap-3 shrink-0 z-10">
         <h1 className="text-sm font-bold text-gray-900">My App</h1>
         <span className="text-xs text-gray-500 hidden md:block">
-          노드 클릭으로 편집 · 핸들 드래그로 연결
+          클릭=편집 · 더블클릭=이름변경 · 블록 핸들 드래그=연결
         </span>
         <div className="flex-1" />
         <Button variant="secondary" size="sm" onClick={() => setShowCodeExport(true)}>
@@ -318,6 +351,7 @@ export function WorkspaceClient() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
+          onNodeDoubleClick={onNodeDoubleClick}
           nodeTypes={nodeTypes}
           fitView
           proOptions={{ hideAttribution: true }}

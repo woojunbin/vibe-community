@@ -2,9 +2,11 @@
 
 import { useState, useRef, useMemo } from 'react';
 import { v4 as uuid } from 'uuid';
+import { Zap } from 'lucide-react';
 import type { ActionBlock } from '@/types/action-block';
 import { TRIGGER_LABELS } from '@/types/action-block';
 import { ACTION_CATALOG, ACTION_CATEGORIES, CATEGORY_LABELS, getActionDef } from '@/utils/action-catalog';
+import { BLOCK_PRESETS, PRESET_CATEGORIES, instantiatePreset } from '@/utils/block-presets';
 import { BlockRow } from './BlockRow';
 
 interface ActionBlockPanelProps {
@@ -21,6 +23,7 @@ export function ActionBlockPanel({ blocks, onChange, componentNames, selectedCom
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteFilter, setAutocompleteFilter] = useState('');
   const [newTriggerType, setNewTriggerType] = useState<string>('onPress');
+  const [showPresets, setShowPresets] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const triggerGroups = useMemo(() => {
@@ -84,6 +87,14 @@ export function ActionBlockPanel({ blocks, onChange, componentNames, selectedCom
     onChange(blocks.filter(b => b.id !== id));
   }
 
+  function applyPreset(presetId: string) {
+    const preset = BLOCK_PRESETS.find(p => p.id === presetId);
+    if (!preset) return;
+    const newBlocks = instantiatePreset(preset, selectedComponentId);
+    onChange([...blocks, ...newBlocks.map((b, i) => ({ ...b, order: blocks.length + i }))]);
+    setShowPresets(false);
+  }
+
   function duplicateBlock(id: string) {
     const original = blocks.find(b => b.id === id);
     if (!original) return;
@@ -129,7 +140,48 @@ export function ActionBlockPanel({ blocks, onChange, componentNames, selectedCom
       })}
 
       {blocks.length === 0 && (
-        <p className="text-xs text-gray-500 text-center py-3">동작 블록이 없습니다</p>
+        <p className="text-xs text-gray-500 text-center py-2">블록이 없습니다</p>
+      )}
+
+      {/* 프리셋 버튼 */}
+      <button
+        onClick={() => setShowPresets(!showPresets)}
+        className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-blue-600 hover:bg-blue-50 rounded-lg w-full transition-colors"
+      >
+        <Zap size={12} />
+        {showPresets ? '프리셋 닫기' : '블록 프리셋'}
+      </button>
+
+      {/* 프리셋 그리드 */}
+      {showPresets && (
+        <div className="border border-gray-200 rounded-lg p-2 space-y-2 max-h-56 overflow-y-auto">
+          {PRESET_CATEGORIES.map(cat => {
+            const presets = BLOCK_PRESETS.filter(p => p.category === cat.key);
+            if (presets.length === 0) return null;
+            return (
+              <div key={cat.key}>
+                <div className="text-[10px] font-medium text-gray-500 uppercase px-1 mb-1">
+                  {cat.icon} {cat.label}
+                </div>
+                <div className="grid grid-cols-2 gap-1">
+                  {presets.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => applyPreset(p.id)}
+                      className="flex items-center gap-1.5 px-2 py-1.5 text-left rounded-md hover:bg-gray-50 transition-colors border border-gray-100"
+                    >
+                      <span className="text-xs">{p.icon}</span>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-medium text-gray-800 truncate">{p.name}</div>
+                        <div className="text-[9px] text-gray-400 truncate">{p.blocks.length}블록</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       <div className="flex items-center gap-1.5 mt-2">
@@ -156,7 +208,7 @@ export function ActionBlockPanel({ blocks, onChange, componentNames, selectedCom
           onKeyDown={(e) => {
             if (e.key === 'Escape') { setShowAutocomplete(false); setInputValue(''); }
           }}
-          placeholder="/ 또는 자연어로 동작 추가..."
+          placeholder="/ 입력으로 블록 추가..."
           className="w-full px-3 py-2 text-sm border border-dashed border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400"
         />
 

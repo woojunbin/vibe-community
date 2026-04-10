@@ -40,7 +40,7 @@ export function PropertiesPanel({ screenNames = [] }: { screenNames?: string[] }
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'props', label: '속성' },
-    { key: 'blocks', label: '동작' },
+    { key: 'blocks', label: '블록' },
     { key: 'style', label: '스타일' },
   ];
 
